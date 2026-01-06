@@ -89,6 +89,7 @@ jobs:
 
       - name: Push code to cnb.cool
         if: github.ref_type == 'branch' && github.ref_name == 'main' || github.ref_type == 'tag'
+        shell: bash
         env:
           CNB_URL: ${{ secrets.CNB_URL }}
           CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
@@ -96,6 +97,7 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
           GIT_REF: ${{ github.ref }}
         run: |
+          set -e
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git remote add cnb "${CNB_URL}"
