@@ -50,6 +50,8 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # 设置 Node (启用 npm 缓存)
       - name: Setup Node
@@ -84,3 +86,21 @@ jobs:
           releaseDraft: false
           prerelease: ${{ github.ref_type == 'tag' && false || true }}
           args: ${{ matrix.args }}
+
+      - name: Push code to cnb.cool
+        if: github.ref_type == 'branch' && github.ref_name == 'main' || github.ref_type == 'tag'
+        env:
+          CNB_URL: ${{ secrets.CNB_URL }}
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          GIT_REF: ${{ github.ref }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add cnb "${CNB_URL}"
+          if [ "${REF_TYPE}" = "branch" ]; then
+            git -c credential.helper= -c "http.extraHeader=AUTHORIZATION: Bearer ${CNB_TOKEN}" push cnb "HEAD:refs/heads/${REF_NAME}"
+          else
+            git -c credential.helper= -c "http.extraHeader=AUTHORIZATION: Bearer ${CNB_TOKEN}" push cnb "${GIT_REF}"
+          fi
