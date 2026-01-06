@@ -1,5 +1,8 @@
 name: "Joyful Build & Release"
 
+permissions:
+  contents: write
+
 on:
   push:
     branches:
