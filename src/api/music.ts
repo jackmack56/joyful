@@ -87,9 +87,13 @@ export async function fetchMusicList(params: MusicListParams): Promise<MusicList
   return normalizeTracks(response.data.data);
 }
 
-export async function fetchMusicDetail(musicId: string): Promise<MusicTrack> {
+export async function fetchMusicDetail(
+  musicId: string,
+  options?: { signal?: AbortSignal }
+): Promise<MusicTrack> {
   const response = await http.get<ApiResponse<unknown>>(DETAIL_ENDPOINT, {
     params: { musicId },
+    signal: options?.signal,
   });
 
   if (response.data.code !== 200) {

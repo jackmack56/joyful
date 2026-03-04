@@ -11,6 +11,8 @@
   font-family: "Inter", "Noto Sans SC", "SF Pro Display", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: #272322;
   background: #cfc7c2;
+  --app-sidebar-width: 16rem;
+  --playback-bar-height: 98px;
 }
 
 :root.dark {
@@ -111,6 +113,12 @@ html.tauri-app .tauri-range::-moz-range-thumb {
   .desktop-scroll {
     height: calc(100vh - 200px);
     max-height: calc(100vh - 200px);
+  }
+}
+
+@media (max-width: 1023px) {
+  :root {
+    --playback-bar-height: 118px;
   }
 }
 

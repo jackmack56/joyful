@@ -15,10 +15,54 @@ interface PlayerState {
   lyrics: LyricLine[];
   activeLyricIndex: number;
   loading: boolean;
+  switchingTrackId: string | null;
   error: string | null;
 }
 
 const PLAYER_STORAGE_KEY = "joyful.player.state.v1";
+const TRACK_DETAIL_CACHE_STORAGE_KEY = "joyful.player.track.detail.cache.v1";
+const TRACK_DETAIL_CACHE_LIMIT = 30;
+const TRACK_DETAIL_CACHE_TTL = 20 * 60 * 1000;
+let detailLoadingCounter = 0;
+
+type TrackDetailCacheEntry = {
+  track: MusicTrack;
+  cachedAt: number;
+};
+
+function normalizeTrackDetailCache(raw: unknown): TrackDetailCacheEntry[] {
+  if (!Array.isArray(raw)) return [];
+
+  const now = Date.now();
+  const normalized: TrackDetailCacheEntry[] = [];
+  for (const item of raw) {
+    if (typeof item !== "object" || item === null) continue;
+    const typed = item as { track?: MusicTrack; cachedAt?: number };
+    if (!typed.track?.id || typeof typed.cachedAt !== "number") continue;
+    if (now - typed.cachedAt > TRACK_DETAIL_CACHE_TTL) continue;
+    const exists = normalized.findIndex((entry) => entry.track.id === typed.track!.id);
+    if (exists !== -1) {
+      normalized.splice(exists, 1);
+    }
+    normalized.push({ track: typed.track, cachedAt: typed.cachedAt });
+  }
+  if (normalized.length > TRACK_DETAIL_CACHE_LIMIT) {
+    return normalized.slice(normalized.length - TRACK_DETAIL_CACHE_LIMIT);
+  }
+  return normalized;
+}
+
+const trackDetailCache: TrackDetailCacheEntry[] = normalizeTrackDetailCache(
+  storage.get<unknown[]>(TRACK_DETAIL_CACHE_STORAGE_KEY, [])
+);
+
+function persistTrackDetailCache(): void {
+  if (!trackDetailCache.length) {
+    storage.remove(TRACK_DETAIL_CACHE_STORAGE_KEY);
+    return;
+  }
+  storage.set(TRACK_DETAIL_CACHE_STORAGE_KEY, trackDetailCache);
+}
 
 const defaultProgress: PlayerProgress = {
   current: 0,
@@ -37,6 +81,51 @@ function clampIndex(index: number, list: unknown[]): number {
   return index;
 }
 
+function isAbortError(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === "AbortError") return true;
+  if (typeof error !== "object" || error === null) return false;
+  const target = error as { name?: string; code?: string };
+  return target.name === "CanceledError" || target.code === "ERR_CANCELED";
+}
+
+function removeCacheByTrackId(trackId: string): void {
+  const index = trackDetailCache.findIndex((item) => item.track.id === trackId);
+  if (index !== -1) {
+    trackDetailCache.splice(index, 1);
+  }
+}
+
+function getValidTrackDetailFromCache(trackId: string): MusicTrack | null {
+  const index = trackDetailCache.findIndex((item) => item.track.id === trackId);
+  if (index === -1) return null;
+
+  const cached = trackDetailCache[index];
+  if (Date.now() - cached.cachedAt > TRACK_DETAIL_CACHE_TTL) {
+    trackDetailCache.splice(index, 1);
+    persistTrackDetailCache();
+    return null;
+  }
+
+  return cached.track;
+}
+
+function upsertTrackDetailCache(track: MusicTrack): void {
+  removeCacheByTrackId(track.id);
+  trackDetailCache.push({
+    track: { ...track },
+    cachedAt: Date.now(),
+  });
+  while (trackDetailCache.length > TRACK_DETAIL_CACHE_LIMIT) {
+    trackDetailCache.shift();
+  }
+  persistTrackDetailCache();
+}
+
+function clearTrackDetailCache(): void {
+  trackDetailCache.length = 0;
+  persistTrackDetailCache();
+}
+
 export const usePlayerStore = defineStore("player", {
   state: (): PlayerState => {
     const persisted = getInitialState();
@@ -51,6 +140,7 @@ export const usePlayerStore = defineStore("player", {
       lyrics: [],
       activeLyricIndex: -1,
       loading: false,
+      switchingTrackId: null,
       error: null,
     };
   },
@@ -79,6 +169,7 @@ export const usePlayerStore = defineStore("player", {
         this.currentIndex = 0;
         this.lyrics = [];
         this.activeLyricIndex = -1;
+        clearTrackDetailCache();
       } else {
         this.currentIndex = clampIndex(this.currentIndex, tracks);
       }
@@ -114,6 +205,9 @@ export const usePlayerStore = defineStore("player", {
     setIsPlaying(status: boolean): void {
       this.isPlaying = status;
     },
+    setSwitchingTrack(trackId: string | null): void {
+      this.switchingTrackId = trackId;
+    },
     setLyricsFromTrack(track?: MusicTrack | null): void {
       this.lyrics = parseLrc(track?.lrc ?? "");
       this.activeLyricIndex = -1;
@@ -121,50 +215,87 @@ export const usePlayerStore = defineStore("player", {
     setActiveLyricIndex(index: number): void {
       this.activeLyricIndex = index;
     },
-    async ensureTrackDetail(trackId: string, forceRefresh = true): Promise<MusicTrack | null> {
+    async ensureTrackDetail(
+      trackId: string,
+      forceRefresh = true,
+      syncLyricsWithTrack = true,
+      signal?: AbortSignal
+    ): Promise<MusicTrack | null> {
       const existing = this.queue.find((track) => track.id === trackId);
       if (!existing) return null;
 
-      if (!forceRefresh && existing.url && existing.pic) {
-        this.setLyricsFromTrack(existing);
-        return existing;
+      if (!forceRefresh) {
+        const cachedTrack = getValidTrackDetailFromCache(trackId);
+        if (cachedTrack?.url) {
+          const mergedCached = { ...existing, ...cachedTrack };
+          this.queue = this.queue.map((track) =>
+            track.id === trackId ? mergedCached : track
+          );
+          if (syncLyricsWithTrack) {
+            this.setLyricsFromTrack(mergedCached);
+          }
+          this.persist();
+          return mergedCached;
+        }
+
       }
 
+      detailLoadingCounter += 1;
       this.loading = true;
       this.resetError();
       try {
-        const detail = await fetchMusicDetail(trackId);
+        const detail = await fetchMusicDetail(trackId, { signal });
         const merged = { ...existing, ...detail };
         this.queue = this.queue.map((track) => (track.id === trackId ? merged : track));
-        this.setLyricsFromTrack(merged);
+        upsertTrackDetailCache(merged);
+        if (syncLyricsWithTrack) {
+          this.setLyricsFromTrack(merged);
+        }
         this.persist();
         return merged;
       } catch (error) {
+        if (isAbortError(error)) {
+          return null;
+        }
         const message = error instanceof Error ? error.message : "加载歌曲详情失败";
         this.error = message;
         console.error(message);
         return null;
       } finally {
-        this.loading = false;
+        detailLoadingCounter = Math.max(0, detailLoadingCounter - 1);
+        this.loading = detailLoadingCounter > 0;
       }
     },
-    async playTrack(trackId: string): Promise<void> {
+    async playTrack(
+      trackId: string,
+      options?: { forceRefresh?: boolean; signal?: AbortSignal }
+    ): Promise<MusicTrack | null> {
       const index = this.queue.findIndex((track) => track.id === trackId);
-      if (index === -1) return;
-      this.setIsPlaying(true);
-      this.currentIndex = index;
-      const track = await this.ensureTrackDetail(trackId);
+      if (index === -1) return null;
+
+      this.setSwitchingTrack(trackId);
+      const track = await this.ensureTrackDetail(
+        trackId,
+        options?.forceRefresh ?? false,
+        false,
+        options?.signal
+      );
+
       if (!track) {
-        if (!this.error) this.error = "无法播放，加载歌曲详情失败";
-        this.isPlaying = false;
-        return;
+        this.setSwitchingTrack(null);
+        return null;
       }
       if (!track.url) {
         this.error = "无法播放，缺少音频地址";
-        this.isPlaying = false;
-        return;
+        this.setSwitchingTrack(null);
+        return null;
       }
+
+      this.currentIndex = index;
+      this.setLyricsFromTrack(track);
       this.persist();
+      this.setSwitchingTrack(null);
+      return track;
     },
     playNext(forceMove = true): MusicTrack | null {
       if (!this.queue.length) return null;
@@ -232,6 +363,7 @@ export const usePlayerStore = defineStore("player", {
         this.lyrics = [];
         this.activeLyricIndex = -1;
         this.isPlaying = false;
+        clearTrackDetailCache();
         this.persist();
         return;
       }
@@ -247,6 +379,8 @@ export const usePlayerStore = defineStore("player", {
       this.persist();
     },
     resetPlayerState(): void {
+      detailLoadingCounter = 0;
+      clearTrackDetailCache();
       this.queue = [];
       this.currentIndex = 0;
       this.playbackMode = this.playbackMode ?? "list";
@@ -254,6 +388,8 @@ export const usePlayerStore = defineStore("player", {
       this.lyrics = [];
       this.activeLyricIndex = -1;
       this.isPlaying = false;
+      this.loading = false;
+      this.switchingTrackId = null;
       storage.remove(PLAYER_STORAGE_KEY);
     },
   },

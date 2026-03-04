@@ -1,20 +1,25 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { storeToRefs } from "pinia";
+import { useRoute, useRouter } from "vue-router";
 import { usePlayerStore } from "@/store/player";
-import { useUiStore } from "@/store/ui";
 import { usePlayer } from "@/composables/usePlayer";
 import { useLikeToggle } from "@/composables/useLikeToggle";
 
 const playerStore = usePlayerStore();
-const uiStore = useUiStore();
-const { currentTrack, playbackMode, isPlaying } = storeToRefs(playerStore);
+const router = useRouter();
+const route = useRoute();
+const { currentTrack, playbackMode, isPlaying, switchingTrackId } = storeToRefs(playerStore);
 const controls = usePlayer();
 const progress = controls.progress;
 const { lyrics, activeLyricIndex } = storeToRefs(playerStore);
-const { lyricsVisible } = storeToRefs(uiStore);
 const { toggleLike, isPending } = useLikeToggle();
 const activeLyric = computed(() => lyrics.value[activeLyricIndex.value]?.text ?? "");
+const isSwitching = computed(() => Boolean(switchingTrackId.value));
+const switchingTrackName = computed(() => {
+  if (!switchingTrackId.value) return "";
+  return playerStore.queue.find((track) => track.id === switchingTrackId.value)?.name ?? "歌曲";
+});
 const isCurrentLiked = computed(() => Number(currentTrack.value?.isLike) === 1);
 const isTauriEnv = Boolean((import.meta as any).env?.TAURI_PLATFORM || (import.meta as any).env?.TAURI_ARCH || (import.meta as any).env?.TAURI_FAMILY);
 const isNativeClient = ref(isTauriEnv);
@@ -79,23 +84,30 @@ const modeLabel = computed(() => {
   }
 });
 
-const showLyrics = () => {
-  uiStore.openSidePanel("lyrics");
-  if (typeof window !== "undefined" && window.innerWidth < 1024) {
-    uiStore.setMobileLyricsOpen(true);
+const isLyricsRoute = computed(() => route.name === "lyrics");
+const activeLyricsTab = computed<"lyrics" | "playlist">(() =>
+  route.query.tab === "playlist" ? "playlist" : "lyrics"
+);
+
+const openLyricsPage = async (tab: "lyrics" | "playlist"): Promise<void> => {
+  if (isLyricsRoute.value && activeLyricsTab.value === tab) return;
+  if (isLyricsRoute.value) {
+    await router.replace({ name: "lyrics", query: { tab } });
+    return;
   }
+  await router.push({ name: "lyrics", query: { tab } });
+};
+
+const showLyrics = () => {
+  void openLyricsPage("lyrics");
 };
 
 const showMobileLyrics = () => {
-  uiStore.openSidePanel(lyricsVisible.value ? "lyrics" : "playlist");
-  uiStore.setMobileLyricsOpen(true);
+  void openLyricsPage("lyrics");
 };
 
 const showPlaylist = () => {
-  uiStore.openSidePanel("playlist");
-  if (typeof window !== "undefined" && window.innerWidth < 1024) {
-    uiStore.setMobileLyricsOpen(true);
-  }
+  void openLyricsPage("playlist");
 };
 
 const toggleCurrentLike = () => {
@@ -126,10 +138,11 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="sticky bottom-0 z-20 mt-auto w-full border-t border-white/40 bg-white/90 py-2.5 text-slate-800 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] backdrop-blur dark:border-white/10 dark:bg-black/40 dark:text-white">
+  <div class="sticky bottom-0 z-20 mt-auto w-full bg-white/90 py-2.5 text-slate-800 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] backdrop-blur dark:bg-black/40 dark:text-white">
     <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 text-sm sm:grid-cols-[minmax(0,1fr)_minmax(260px,420px)_max-content] lg:grid-cols-[minmax(0,1fr)_minmax(320px,520px)_minmax(0,1fr)] sm:px-6 lg:px-12 max-w-screen-xl mx-auto">
       <button
-        class="flex min-w-0 items-center gap-3 order-1 sm:order-none text-left"
+        class="order-1 flex min-w-0 items-center gap-3 text-left transition-opacity duration-200 sm:order-none"
+        :class="isSwitching ? 'opacity-75' : 'opacity-100'"
         type="button"
         @click="showMobileLyrics"
       >
@@ -141,6 +154,15 @@ onMounted(() => {
         <div class="min-w-0 max-w-[55vw] sm:max-w-[320px]">
           <p class="truncate font-semibold">{{ currentTrack?.name ?? "暂无播放" }}</p>
           <p class="truncate text-xs text-slate-500 dark:text-white/60">{{ currentTrack?.artist ?? "选择歌曲开始播放" }}</p>
+          <transition name="switch-fade">
+            <p
+              v-if="isSwitching"
+              class="mt-1 inline-flex items-center gap-1 text-[11px] text-slate-500 dark:text-white/60"
+            >
+              <span class="h-2.5 w-2.5 animate-spin rounded-full border border-slate-400 border-t-transparent dark:border-white/60"></span>
+              切换中：{{ switchingTrackName }}
+            </p>
+          </transition>
           <p v-if="activeLyric" class="mt-1 hidden truncate text-xs text-emerald-600 dark:text-emerald-300 sm:block">
             {{ activeLyric }}
           </p>
@@ -245,7 +267,7 @@ onMounted(() => {
         </button>
         <button
           class="hidden sm:flex flex-none whitespace-nowrap items-center gap-1 rounded-full border border-slate-200 px-2 sm:px-3 py-1 text-xs transition hover:border-brand hover:text-brand dark:border-white/20 dark:text-white/70 dark:hover:border-brand dark:hover:text-brand"
-          :class="lyricsVisible ? 'bg-brand/10 text-brand dark:bg-brand/20' : ''"
+          :class="isLyricsRoute && activeLyricsTab === 'lyrics' ? 'bg-brand/10 text-brand dark:bg-brand/20' : ''"
           type="button"
           @click="showLyrics"
         >
@@ -256,7 +278,7 @@ onMounted(() => {
         </button>
         <button
           class="flex flex-none whitespace-nowrap items-center gap-1 rounded-full border border-slate-200 px-2 sm:px-3 py-1 text-xs transition hover:border-brand hover:text-brand dark:border-white/20 dark:text-white/70 dark:hover:border-brand dark:hover:text-brand"
-          :class="!lyricsVisible ? 'bg-brand/10 text-brand dark:bg-brand/20' : ''"
+          :class="isLyricsRoute && activeLyricsTab === 'playlist' ? 'bg-brand/10 text-brand dark:bg-brand/20' : ''"
           type="button"
           @click="showPlaylist"
         >
@@ -327,5 +349,16 @@ onMounted(() => {
   background: var(--range-fill-color, #ec4141);
   border: 2px solid rgba(255, 255, 255, 0.9);
   border-radius: 9999px;
+}
+
+.switch-fade-enter-active,
+.switch-fade-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.switch-fade-enter-from,
+.switch-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-2px);
 }
 </style>

@@ -23,6 +23,9 @@ const loginForm = reactive({
   password: "",
 });
 const rememberMe = ref(false);
+const showLoginPassword = ref(false);
+const showRegisterPassword = ref(false);
+const showForgotPassword = ref(false);
 const isNativeClient = ref(false);
 const particlesCanvas = ref<HTMLCanvasElement | null>(null);
 let stopParticles: (() => void) | null = null;
@@ -294,6 +297,9 @@ const handleLogout = () => {
 
 const switchMode = (next: AuthMode) => {
   mode.value = next;
+  showLoginPassword.value = false;
+  showRegisterPassword.value = false;
+  showForgotPassword.value = false;
   authStore.setMessage(null);
   authStore.resetError();
 };
@@ -465,32 +471,144 @@ onBeforeUnmount(() => {
 
             <div class="space-y-1" v-if="mode !== 'forgot'">
               <label class="text-xs uppercase tracking-[0.3em] text-slate-400 dark:text-white/50">密码</label>
-              <input
-                v-if="mode === 'login'"
-                v-model="loginForm.password"
-                :class="baseInputClass"
-                placeholder="请输入密码"
-                type="password"
-                autocomplete="current-password"
-              />
-              <input
-                v-else
-                v-model="registerForm.password"
-                :class="baseInputClass"
-                placeholder="设置登录密码"
-                type="password"
-                autocomplete="new-password"
-              />
+              <div v-if="mode === 'login'" class="relative">
+                <input
+                  v-model="loginForm.password"
+                  :class="[baseInputClass, 'pr-11']"
+                  placeholder="请输入密码"
+                  :type="showLoginPassword ? 'text' : 'password'"
+                  autocomplete="current-password"
+                />
+                <button
+                  class="absolute inset-y-0 right-3 inline-flex items-center text-slate-500 transition-colors hover:text-slate-700 dark:text-white/60 dark:hover:text-white"
+                  type="button"
+                  :aria-label="showLoginPassword ? '隐藏密码' : '显示密码'"
+                  :aria-pressed="showLoginPassword"
+                  @click="showLoginPassword = !showLoginPassword"
+                >
+                  <svg
+                    v-if="showLoginPassword"
+                    class="h-5 w-5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M3 3 21 21" />
+                    <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" />
+                    <path d="M9.9 5.1A10.1 10.1 0 0 1 12 5c5 0 9.3 3.1 11 7-1 2.2-2.8 4.1-5.1 5.3" />
+                    <path d="M6.2 6.2C4.3 7.4 2.8 9.1 2 12c.7 1.8 2 3.4 3.6 4.6" />
+                  </svg>
+                  <svg
+                    v-else
+                    class="h-5 w-5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                </button>
+              </div>
+              <div v-else class="relative">
+                <input
+                  v-model="registerForm.password"
+                  :class="[baseInputClass, 'pr-11']"
+                  placeholder="设置登录密码"
+                  :type="showRegisterPassword ? 'text' : 'password'"
+                  autocomplete="new-password"
+                />
+                <button
+                  class="absolute inset-y-0 right-3 inline-flex items-center text-slate-500 transition-colors hover:text-slate-700 dark:text-white/60 dark:hover:text-white"
+                  type="button"
+                  :aria-label="showRegisterPassword ? '隐藏密码' : '显示密码'"
+                  :aria-pressed="showRegisterPassword"
+                  @click="showRegisterPassword = !showRegisterPassword"
+                >
+                  <svg
+                    v-if="showRegisterPassword"
+                    class="h-5 w-5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M3 3 21 21" />
+                    <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" />
+                    <path d="M9.9 5.1A10.1 10.1 0 0 1 12 5c5 0 9.3 3.1 11 7-1 2.2-2.8 4.1-5.1 5.3" />
+                    <path d="M6.2 6.2C4.3 7.4 2.8 9.1 2 12c.7 1.8 2 3.4 3.6 4.6" />
+                  </svg>
+                  <svg
+                    v-else
+                    class="h-5 w-5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
             <div class="space-y-1" v-else>
               <label class="text-xs uppercase tracking-[0.3em] text-slate-400 dark:text-white/50">新密码</label>
-              <input
-                v-model="forgotForm.password"
-                :class="baseInputClass"
-                placeholder="设置新密码"
-              type="password"
-            />
+              <div class="relative">
+                <input
+                  v-model="forgotForm.password"
+                  :class="[baseInputClass, 'pr-11']"
+                  placeholder="设置新密码"
+                  :type="showForgotPassword ? 'text' : 'password'"
+                />
+                <button
+                  class="absolute inset-y-0 right-3 inline-flex items-center text-slate-500 transition-colors hover:text-slate-700 dark:text-white/60 dark:hover:text-white"
+                  type="button"
+                  :aria-label="showForgotPassword ? '隐藏新密码' : '显示新密码'"
+                  :aria-pressed="showForgotPassword"
+                  @click="showForgotPassword = !showForgotPassword"
+                >
+                  <svg
+                    v-if="showForgotPassword"
+                    class="h-5 w-5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M3 3 21 21" />
+                    <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" />
+                    <path d="M9.9 5.1A10.1 10.1 0 0 1 12 5c5 0 9.3 3.1 11 7-1 2.2-2.8 4.1-5.1 5.3" />
+                    <path d="M6.2 6.2C4.3 7.4 2.8 9.1 2 12c.7 1.8 2 3.4 3.6 4.6" />
+                  </svg>
+                  <svg
+                    v-else
+                    class="h-5 w-5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
             <label

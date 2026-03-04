@@ -5,6 +5,7 @@ const PlayerView = () => import("@/views/PlayerView.vue");
 const AuthView = () => import("@/views/AuthView.vue");
 const ProfileView = () => import("@/views/ProfileView.vue");
 const HomeView = () => import("@/views/HomeView.vue");
+const LyricsView = () => import("@/views/LyricsView.vue");
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -30,6 +31,12 @@ const router = createRouter({
       path: "/profile",
       name: "profile",
       component: ProfileView,
+      meta: { requiresAuth: true },
+    },
+    {
+      path: "/lyrics",
+      name: "lyrics",
+      component: LyricsView,
       meta: { requiresAuth: true },
     },
     {
