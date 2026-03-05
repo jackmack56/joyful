@@ -27,17 +27,23 @@ main:
         - name: Web Build & Upload
           image: node:22
           script: |
-            set -euo pipefail
+            set -eu
             # 前端发布目录，可在流水线变量或导入的 dev_env 中覆盖 WEB_DEPLOY_PATH
             # 默认 /home/ect_service/project/web/joyful
             export WEB_DEPLOY_PATH=${WEB_DEPLOY_PATH:-/home/ect_service/project/web/joyful}
             npm install
             npm run build
             tar -czf dist.tar.gz -C dist .
-            apt-get update && apt-get install -y openssh-client sshpass
-            sshpass -p "${HOST_PASSWORD}" ssh -o StrictHostKeyChecking=no "${HOST_NAME}@${HOST_IP}" "mkdir -p ${WEB_DEPLOY_PATH}"
-            sshpass -p "${HOST_PASSWORD}" scp -o StrictHostKeyChecking=no dist.tar.gz "${HOST_NAME}@${HOST_IP}:${WEB_DEPLOY_PATH}/dist.tar.gz"
-            sshpass -p "${HOST_PASSWORD}" ssh -o StrictHostKeyChecking=no "${HOST_NAME}@${HOST_IP}" "cd ${WEB_DEPLOY_PATH} && rm -rf dist2 && [ -d dist1 ] && mv dist1 dist2 || true && mkdir -p dist1 && tar -xzf dist.tar.gz -C dist1 && rm -f dist.tar.gz && nginx -s reload"
+            apt-get update && apt-get install -y --no-install-recommends openssh-client sshpass
+            sshpass -p "${HOST_PASSWORD}" ssh -o StrictHostKeyChecking=no -p ${HOST_PORT} "${HOST_NAME}@${HOST_IP}" "mkdir -p ${WEB_DEPLOY_PATH}"
+            sshpass -p "${HOST_PASSWORD}" scp -o StrictHostKeyChecking=no -P ${HOST_PORT} dist.tar.gz "${HOST_NAME}@${HOST_IP}:${WEB_DEPLOY_PATH}/dist.tar.gz"
+            sshpass -p "${HOST_PASSWORD}" ssh -o StrictHostKeyChecking=no -p ${HOST_PORT} "${HOST_NAME}@${HOST_IP}" "cd ${WEB_DEPLOY_PATH} &&rm -rf dist2 &&
+              ([ -d dist1 ] && mv dist1 dist2 || true) &&
+              mkdir -p dist1 &&
+              tar -xzf dist.tar.gz -C dist1 &&
+              rm -f dist.tar.gz
+            "
+            sshpass -p "${HOST_PASSWORD}" ssh -o StrictHostKeyChecking=no -p ${HOST_PORT} "${HOST_NAME}@${HOST_IP}" "sudo nginx -s reload"
           timeout: 15m
 
 # 部署相关
