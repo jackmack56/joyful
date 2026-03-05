@@ -102,7 +102,7 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git remote add cnb "${CNB_URL}"
           if [ "${REF_TYPE}" = "branch" ]; then
-            git -c credential.helper= -c "http.extraHeader=AUTHORIZATION: Bearer ${CNB_TOKEN}" push cnb "HEAD:refs/heads/${REF_NAME}"
+            git -c credential.helper= -c "http.extraHeader=AUTHORIZATION: Bearer ${CNB_TOKEN}" push -f cnb "HEAD:refs/heads/${REF_NAME}"
           else
-            git -c credential.helper= -c "http.extraHeader=AUTHORIZATION: Bearer ${CNB_TOKEN}" push cnb "${GIT_REF}"
+            git -c credential.helper= -c "http.extraHeader=AUTHORIZATION: Bearer ${CNB_TOKEN}" push -f cnb "${GIT_REF}"
           fi
